@@ -44,9 +44,12 @@ public:
     // Multiply/divide primitives
     constexpr Fixpoint Multiply(Fixpoint num) const noexcept
     {
-        return Fixpoint(MultiplyImpl(mValue, num.mValue), REPRESENTATION);
+        return Fixpoint(MultiplyImpl(CalcAbs(mValue), CalcAbs(num.mValue)) ^ GetSign(mValue, num.mValue), REPRESENTATION);
     }
-    constexpr Fixpoint Divide(Fixpoint num) const noexcept { return Fixpoint(mValue / num.mValue, REPRESENTATION); }
+    constexpr Fixpoint Divide(Fixpoint num) const noexcept
+    {
+        return Fixpoint(DivideImpl(CalcAbs(mValue), CalcAbs(num.mValue)) ^ GetSign(mValue, num.mValue), REPRESENTATION);
+    }
 
     // Unary sign operators
     constexpr Fixpoint operator +() const noexcept { return *this; }
@@ -137,13 +140,13 @@ public:
     }
 
 
-    constexpr Fixpoint Abs() const noexcept { return Fixpoint(CalcAbs(mValue, CalcMask(mValue)), REPRESENTATION); }
+    constexpr Fixpoint Abs() const noexcept { return Fixpoint(CalcAbs(mValue), REPRESENTATION); }
 
     std::array<char, 24> ToString() const noexcept;
 
 private:
-    static constexpr int64_t CalcMask(int64_t value) noexcept { return value >> 63; }
-    static constexpr int64_t CalcAbs(int64_t value, int64_t mask) noexcept { return (value ^ mask) - mask; }
+    static constexpr int64_t CalcAbs(int64_t value) noexcept { return (value & std::numeric_limits<int64_t>::min()) ^ value; }
+    static constexpr int64_t GetSign(int64_t v1, int64_t v2) noexcept { return (v1 ^ v2) & std::numeric_limits<int64_t>::min(); }
 
     template <typename T>
     static constexpr typename std::enable_if<std::is_unsigned<T>::value, int64_t>::type Convert(T value) noexcept
@@ -166,6 +169,11 @@ private:
     static constexpr int64_t MultiplyImpl(int64_t v1, int64_t v2) noexcept
     {
         return v1 / GetFactor() * v2 + v2 / GetFactor() * (v1 % GetFactor()) + (v1 % GetFactor()) * (v2 % GetFactor()) / GetFactor();
+    }
+
+    static constexpr int64_t DivideImpl(int64_t v1, int64_t v2) noexcept
+    {
+        return v1 / v2 * GetFactor() + v1 % v2 * GetFactor() / v2;
     }
 
     template <typename T>

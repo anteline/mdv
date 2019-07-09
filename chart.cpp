@@ -156,7 +156,7 @@ public:
         {
             mSeries->append(x, y);
             mMin = std::min(mMin, y);
-            mMax = std::max(mMin, y);
+            mMax = std::max(mMax, y);
         }
     }
 

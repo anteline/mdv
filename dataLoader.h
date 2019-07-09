@@ -19,7 +19,7 @@ class DataLoader final
 public:
     DataLoader(void const *data, size_t length);
 
-    operator bool() const noexcept { return not mIndicesRanges.empty(); }
+    operator bool() const noexcept { return 0 < mDisplayRange; }
 
     Time IndexToTime(double index);
 

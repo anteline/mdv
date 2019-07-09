@@ -95,6 +95,14 @@ DataLoader::DataLoader(void const *data, size_t length)
     }
     length -= (sizeof(DataHeader) + header->mNumSegments * sizeof(Segment));
 
+    std::vector<int64_t> indicesRanges = CalcSegments(header->mTimeTick, segments, segments + header->mNumSegments);
+    if (not indicesRanges.empty())
+    {
+        mIndicesRanges = std::move(indicesRanges);
+        mSegments = segments;
+        mTimeTick = header->mTimeTick;
+    }
+
     void const *addr = segments + header->mNumSegments;
     std::vector<Series> series;
     series.reserve(header->mNumSeries);
@@ -103,7 +111,8 @@ DataLoader::DataLoader(void const *data, size_t length)
         struct SeriesHeader
         {
             uint32_t mNumPoints;
-            uint32_t mNameLength;
+            uint16_t mRightAxis;
+            uint16_t mNameLength;
         };
 
         if (length <= sizeof(SeriesHeader))
@@ -113,7 +122,7 @@ DataLoader::DataLoader(void const *data, size_t length)
         }
         SeriesHeader const *seriesHeader = static_cast<SeriesHeader const *>(addr);
         char const *name = reinterpret_cast<char const *>(seriesHeader + 1);
-        std::pair<Time, Fixpoint> const *data = AlignTo<std::pair<Time, Fixpoint>>(name + seriesHeader->mNameLength + 2);
+        std::pair<Time, Fixpoint> const *data = AlignTo<std::pair<Time, Fixpoint>>(name + seriesHeader->mNameLength + 1);
 
         size_t seriesLength = size_t(reinterpret_cast<char const *>(data + seriesHeader->mNumPoints) - static_cast<char const *>(addr));
         if (length < seriesLength)
@@ -126,7 +135,7 @@ DataLoader::DataLoader(void const *data, size_t length)
 
         std::vector<std::pair<int64_t, double>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
         if (not points.empty())
-            series.push_back(Series{name, bool(name[seriesHeader->mNameLength + 1]), std::move(points)});
+            series.push_back(Series{name, seriesHeader->mRightAxis == 0u, std::move(points)});
     }
 
     if (0 < length)
@@ -135,15 +144,8 @@ DataLoader::DataLoader(void const *data, size_t length)
         return;
     }
 
-    std::vector<int64_t> indicesRanges = CalcSegments(header->mTimeTick, segments, segments + header->mNumSegments);
-    if (not indicesRanges.empty())
-    {
-        mIndicesRanges = std::move(indicesRanges);
-        mSegments = segments;
-        mTimeTick = header->mTimeTick;
-        mDisplayRange = header->mDisplayRange / header->mTimeTick;
-        mSeries = std::move(series);
-    }
+    mDisplayRange = header->mDisplayRange / header->mTimeTick;
+    mSeries = std::move(series);
 }
 
 Time DataLoader::IndexToTime(double index)
