@@ -1,5 +1,5 @@
 QT += charts
-CONFIG += debug c++11
+CONFIG += c++11
 
 HEADERS +=   \
     IChart.h \

@@ -13,14 +13,6 @@
 
 static char const *sValuePrefix[] = {"Bottom: ", "Left: ", "Right: "};
 
-static QString ToString(Time time, size_t offset, size_t length)
-{
-    std::array<char, 32> str = time.ToString();
-    if (length < sizeof(str))
-        str[length] = char(0);
-    return QString(str.data() + offset);
-}
-
 static QString ToString(Time time, size_t length)
 {
     std::array<char, 32> str = time.ToString();
@@ -59,20 +51,10 @@ bool Chart::Show()
         QtCharts::QCategoryAxis *horizontalAxis = new QtCharts::QCategoryAxis;
         horizontalAxis->setLabelsPosition(QtCharts::QCategoryAxis::AxisLabelsPositionOnValue);
 
-        std::vector<Time> segments(mIndicesSegments.size());
         for (size_t i = 0; i < mIndicesSegments.size(); ++i)
         {
             int64_t index = mIndicesSegments[i];
-            segments[i] = mIndexToTime(index);
-            QString label;
-            if (i == 0 or segments[i - 1].Date() != segments[i].Date())
-            {
-                label = ToString(segments[i], 16u);
-            }
-            else
-            {
-                label = ToString(segments[i], 11u, 16u);
-            }
+            QString label = ToString(mIndexToTime(index), 16u);
             horizontalAxis->append(label, index);
         }
         if (mHorizontalRangeLength < mIndicesSegments.back() - mIndicesSegments.front())
@@ -285,7 +267,8 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
             if (mValues[axis] != nullptr)
             {
                 qreal value = chart()->mapToValue(pos, mSeries[axis - 1][0].mSeries).y();
-                mValues[axis]->setText(QString(sValuePrefix[axis]) + QString("%1").arg(value));
+                int factor = value < 100 ? 1000 : (value < 1000 ? 100 : 10);
+                mValues[axis]->setText(QString(sValuePrefix[axis]) + QString("%1").arg(int64_t(value * factor + factor / 2) / qreal(factor)));
             }
         }
     }
