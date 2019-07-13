@@ -308,6 +308,8 @@ void Chart::OnKeyEscape()
         {
             chart()->zoomReset();
             auto it = mActions.begin();
+            while (it != mActions.end() and it->mButton == Qt::RightButton)
+                ++it;
             while (it + 1 < mActions.end())
             {
                 Action const &action = *it++;
