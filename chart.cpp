@@ -254,6 +254,22 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
     QChartView::mouseReleaseEvent(event);
 }
 
+static qreal Round(qreal value)
+{
+    qreal sign = 1 - 2 * (value < 0);
+    value *= sign;
+
+    int factor = 1000;
+    if (10 < value)
+        factor /= 10;
+    if (100 < value)
+        factor /= 10;
+    if (1000 < value)
+        factor /= 10;
+
+    return sign * int64_t(value * factor + 0.5) / factor;
+}
+
 void Chart::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint const pos = event->pos();
@@ -267,8 +283,7 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
             if (mValues[axis] != nullptr)
             {
                 qreal value = chart()->mapToValue(pos, mSeries[axis - 1][0].mSeries).y();
-                int factor = value < 100 ? 1000 : (value < 1000 ? 100 : 10);
-                mValues[axis]->setText(QString(sValuePrefix[axis]) + QString("%1").arg(int64_t(value * factor + factor / 2) / qreal(factor)));
+                mValues[axis]->setText(QString(sValuePrefix[axis]) + QString("%1").arg(Round(value)));
             }
         }
     }
