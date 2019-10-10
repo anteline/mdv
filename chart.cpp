@@ -28,6 +28,8 @@ Chart::Chart()
     mHorizontalRangeScaler(1),
     mVisible(false)
 {
+    mAxisLocked[0] = mAxisLocked[1] = false;
+
     chart()->setMinimumSize(640, 480);
     chart()->legend()->setVisible(true);
     chart()->legend()->setAlignment(Qt::AlignBottom);
@@ -44,10 +46,10 @@ bool Chart::Show()
     if (mVisible)
         return true;
 
+    CreateCoordinators();
+
     if (mIndexToTime and (not(mSeries[0].empty()) or not(mSeries[1].empty())))
     {
-        SetCoordinators();
-
         QtCharts::QCategoryAxis *horizontalAxis = new QtCharts::QCategoryAxis;
         horizontalAxis->setLabelsPosition(QtCharts::QCategoryAxis::AxisLabelsPositionOnValue);
 
@@ -74,7 +76,6 @@ bool Chart::Show()
                 chart()->addAxis(verticalAxis, axis == Axis::Left ? Qt::AlignLeft : Qt::AlignRight);
                 for (SeriesData &seriesData : mSeries[axis - 1])
                 {
-                    chart()->addSeries(seriesData.mSeries);
                     seriesData.mSeries->attachAxis(horizontalAxis);
                     seriesData.mSeries->attachAxis(verticalAxis);
 
@@ -163,9 +164,10 @@ std::unique_ptr<IChart::ISeries> Chart::CreateSeries(Axis axis, char const *name
 void Chart::AddSeries(Axis axis, SeriesData series)
 {
     mSeries[axis - 1].push_back(std::move(series));
+    chart()->addSeries(series.mSeries);
 }
 
-void Chart::SetCoordinators()
+void Chart::CreateCoordinators()
 {
     if (mValues[Axis::Horizontal] == nullptr)
     {
@@ -176,7 +178,11 @@ void Chart::SetCoordinators()
                 mValues[axis].reset(new QGraphicsSimpleTextItem(chart()));
         }
     }
+    SetCoordinators();
+}
 
+void Chart::SetCoordinators()
+{
     qreal middle = chart()->size().width() / 2;
     qreal height = chart()->size().height() - 20;
 
@@ -238,6 +244,23 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
         Action &action = mActions.back();
         action.mComplete = true;
 
+        double range[2][2];
+        QtCharts::QValueAxis *axes[2] = {nullptr};
+
+        for (QtCharts::QAbstractAxis *axis : chart()->axes(Qt::Vertical))
+        {
+            bool right = axis->alignment() == Qt::AlignRight;
+            if (mAxisLocked[right])
+            {
+                axes[right] = qobject_cast<QtCharts::QValueAxis *>(axis);
+                if (axes[right] != nullptr)
+                {
+                    range[right][0] = axes[right]->min();
+                    range[right][1] = axes[right]->max();
+                }
+            }
+        }
+
         if (action.mButton == Qt::LeftButton)
         {
             action.mEnd = event->pos();
@@ -249,6 +272,15 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
             QPoint pos = event->pos();
             chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
             action.mEnd = pos;
+        }
+
+        for (int i : {0, 1})
+        {
+            if (axes[i] != nullptr)
+            {
+                axes[i]->setMin(range[i][0]);
+                axes[i]->setMax(range[i][1]);
+            }
         }
     }
     QChartView::mouseReleaseEvent(event);
@@ -297,12 +329,21 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
     QChartView::mouseMoveEvent(event);
 }
 
+void Chart::OnKeyF(int idx)
+{
+    mAxisLocked[idx - 1] = bool(1 - mAxisLocked[idx - 1]);
+}
+
 void Chart::keyPressEvent(QKeyEvent *event)
 {
     switch (event->key())
     {
     case Qt::Key_Escape:
         return OnKeyEscape();
+    case Qt::Key_F1:
+        return OnKeyF(1);
+    case Qt::Key_F2:
+        return OnKeyF(2);
     case Qt::Key_Left:
         return OnHorizontalAxisScroll(1);
     case Qt::Key_Right:
@@ -317,7 +358,24 @@ void Chart::keyPressEvent(QKeyEvent *event)
 
 void Chart::OnKeyEscape()
 {
-    if (not mActions.empty() and mActions.back().mComplete)
+    mAxisLocked[0] = mAxisLocked[1] = false;
+
+    if (mActions.empty())
+    {
+        // redraw all components
+        mVisible = false;
+
+        for (QtCharts::QAbstractSeries *series : chart()->series())
+        {
+            for (QtCharts::QAbstractAxis *axis : series->attachedAxes())
+                series->detachAxis(axis);
+        }
+        for (QtCharts::QAbstractAxis *axis : chart()->axes())
+            chart()->removeAxis(axis);
+
+        Show();
+    }
+    else if (mActions.back().mComplete)
     {
         if (mActions.back().mButton == Qt::LeftButton)
         {

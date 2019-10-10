@@ -56,6 +56,7 @@ private:
     virtual void keyPressEvent(QKeyEvent *event) override;
 
     void AddSeries(Axis axis, SeriesData series);
+    void CreateCoordinators();
     void SetCoordinators();
 
     QtCharts::QCategoryAxis * GetHorizontalAxis();
@@ -64,6 +65,7 @@ private:
     void ResetActions();
 
     void OnKeyEscape();
+    void OnKeyF(int idx);
 
     std::function<Time (double)> mIndexToTime;
     std::vector<int64_t> mIndicesSegments;
@@ -72,6 +74,7 @@ private:
     int32_t mHorizontalRangeScroll;
     int16_t mHorizontalRangeScaler;
     bool mVisible;
+    bool mAxisLocked[2];
 
     std::unique_ptr<QGraphicsSimpleTextItem> mValues[3];
 
