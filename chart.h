@@ -68,6 +68,7 @@ private:
 
     void OnKeyEscape();
     void OnKeyF(int idx);
+    void OnToggleVerticalLine();
 
     std::function<Time (double)> mIndexToTime;
     std::vector<int64_t> mIndicesSegments;
@@ -78,6 +79,8 @@ private:
     bool mVisible;
     bool mAxisLocked[2];
     double mAxisSeaLevel[2];
+
+    QGraphicsLineItem *mVLine;
 
     std::unique_ptr<QGraphicsSimpleTextItem> mValues[3];
 

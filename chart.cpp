@@ -1,10 +1,11 @@
 #include <chart.h>
-#include <QtGui/QResizeEvent>
-#include <QtWidgets/QGraphicsScene>
+#include <QPen>
 #include <QtCharts/QCategoryAxis>
 #include <QtCharts/QChart>
-#include <QtWidgets/QGraphicsTextItem>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QResizeEvent>
+#include <QtWidgets/QGraphicsScene>
+#include <QtWidgets/QGraphicsTextItem>
 #include <algorithm>
 #include <limits>
 
@@ -27,7 +28,8 @@ Chart::Chart()
     mHorizontalRangeLength(std::numeric_limits<int64_t>::max()),
     mHorizontalRangeScroll(0),
     mHorizontalRangeScaler(1),
-    mVisible(false)
+    mVisible(false),
+    mVLine(nullptr)
 {
     mAxisLocked[0] = mAxisLocked[1] = false;
     mAxisSeaLevel[0] = mAxisSeaLevel[1] = NAN;
@@ -37,6 +39,11 @@ Chart::Chart()
     chart()->legend()->setAlignment(Qt::AlignBottom);
 
     setRenderHint(QPainter::Antialiasing);
+
+    mVLine = new QGraphicsLineItem();
+    mVLine->setPen(QPen(Qt::PenStyle::DotLine));
+    mVLine->setVisible(true);
+    scene()->addItem(mVLine);
 }
 
 Chart::~Chart()
@@ -363,12 +370,23 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
         chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
         action.mEnd = pos;
     }
+
+    if (mVLine->isVisible() and scene() != nullptr)
+    {
+        QRectF rect = chart()->plotArea();
+        mVLine->setLine(pos.x(), rect.top(), pos.x(), rect.bottom());
+    }
     QChartView::mouseMoveEvent(event);
 }
 
 void Chart::OnKeyF(int idx)
 {
     mAxisLocked[idx - 1] = bool(1 - mAxisLocked[idx - 1]);
+}
+
+void Chart::OnToggleVerticalLine()
+{
+    mVLine->setVisible(not mVLine->isVisible());
 }
 
 void Chart::keyPressEvent(QKeyEvent *event)
@@ -381,6 +399,8 @@ void Chart::keyPressEvent(QKeyEvent *event)
         return OnKeyF(1);
     case Qt::Key_F2:
         return OnKeyF(2);
+    case Qt::Key_F3:
+        return OnToggleVerticalLine();
     case Qt::Key_Left:
         return OnHorizontalAxisScroll(1);
     case Qt::Key_Right:
