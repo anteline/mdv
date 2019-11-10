@@ -7,7 +7,8 @@
 struct DataHeader
 {
     uint32_t mEndianChecker;
-    uint8_t mVersionNumber[4];
+    uint8_t  mVersionNumber[4];
+    Fixpoint mSeaLevels[2];
     uint32_t mNumSegments;
     uint32_t mNumSeries;
     Interval mTimeTick;
@@ -36,6 +37,8 @@ DataLoader::DataLoader(void const *data, size_t length)
 :   mSegments(nullptr),
     mDisplayRange(0)
 {
+    mSeaLevels[0] = mSeaLevels[1] = Fixpoint::Min();
+
     if (data == nullptr or length <= sizeof(DataHeader))
     {
         std::cout << "Market data viewer requires more than " << sizeof(DataHeader) << " bytes of input data." << std::endl;
@@ -78,6 +81,9 @@ DataLoader::DataLoader(void const *data, size_t length)
         std::cout << "Input data is less than expected, there is supposed to have " << header->mNumSegments << " segments." << std::endl;
         return;
     }
+
+    mSeaLevels[0] = header->mSeaLevels[0];
+    mSeaLevels[1] = header->mSeaLevels[1];
 
     Segment const *segments = reinterpret_cast<Segment const *>(header + 1);
     for (uint32_t i = 0; i < header->mNumSegments; ++i)

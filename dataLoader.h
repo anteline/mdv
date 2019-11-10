@@ -9,6 +9,7 @@
 
 // Data format is supposed to be:
 // 0xdeadbeef:int32_t,versionNo:uint8_t[4]
+// SeaLevel:Fixpoint[2]
 // numSegments:uint32_t,numSeries:uint32_t
 // TimeTick:Interval
 // DisplayRange:Interval
@@ -28,6 +29,8 @@ public:
         return std::make_pair(&mIndicesRanges[0], &mIndicesRanges[mIndicesRanges.size()]);
     }
     int64_t GetDisplayRange() const { return mDisplayRange; }
+
+    Fixpoint GetSeaLevel(int idx) const { return mSeaLevels[idx]; }
 
     template <typename Actor>
     void ForeachSeries(Actor const &actor) const
@@ -49,6 +52,8 @@ protected:
         bool     mIsLeftAxis;
         std::vector<std::pair<int64_t, double>> mData;
     };
+
+    Fixpoint mSeaLevels[2];
 
     std::vector<int64_t> mIndicesRanges;
     Segment const *mSegments;

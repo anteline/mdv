@@ -31,6 +31,8 @@ public:
     virtual bool AddSegments(std::function<Time (double)> indexToTime, int64_t const *begin, int64_t const *end) = 0;
     virtual void SetHorizontalRange(int64_t length) = 0;
 
+    virtual void SetSeaLevel(Axis axis, double seaLevel) = 0;
+
     virtual std::unique_ptr<ISeries> CreateSeries(Axis axis, char const *name) = 0;
 };
 

@@ -27,6 +27,8 @@ public:
     virtual bool AddSegments(std::function<Time (double)> indexToTime, int64_t const *begin, int64_t const *end) override final;
     virtual void SetHorizontalRange(int64_t length) override final;
 
+    virtual void SetSeaLevel(Axis axis, double seaLevel) override final;
+
     virtual std::unique_ptr<ISeries> CreateSeries(Axis axis, char const *name) override final;
 
 private:
@@ -75,6 +77,7 @@ private:
     int16_t mHorizontalRangeScaler;
     bool mVisible;
     bool mAxisLocked[2];
+    double mAxisSeaLevel[2];
 
     std::unique_ptr<QGraphicsSimpleTextItem> mValues[3];
 

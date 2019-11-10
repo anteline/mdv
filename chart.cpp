@@ -9,6 +9,7 @@
 #include <limits>
 
 #include <iostream>
+#include <math.h>
 
 
 static char const *sValuePrefix[] = {"Bottom: ", "Left: ", "Right: "};
@@ -29,6 +30,7 @@ Chart::Chart()
     mVisible(false)
 {
     mAxisLocked[0] = mAxisLocked[1] = false;
+    mAxisSeaLevel[0] = mAxisSeaLevel[1] = NAN;
 
     chart()->setMinimumSize(640, 480);
     chart()->legend()->setVisible(true);
@@ -39,6 +41,18 @@ Chart::Chart()
 
 Chart::~Chart()
 {
+}
+
+void Chart::SetSeaLevel(Axis axis, double seaLevel)
+{
+    if (axis == Axis::Left)
+    {
+        mAxisSeaLevel[0] = seaLevel;
+    }
+    else if (axis == Axis::Right)
+    {
+        mAxisSeaLevel[1] = seaLevel;
+    }
 }
 
 bool Chart::Show()
@@ -82,8 +96,31 @@ bool Chart::Show()
                     min = std::min(min, seriesData.mMin);
                     max = std::max(max, seriesData.mMax);
                 }
-                verticalAxis->setMin(min);
-                verticalAxis->setMax(max);
+
+                if (isnan(mAxisSeaLevel[axis - 1]))
+                {
+                    verticalAxis->setMin(min);
+                    verticalAxis->setMax(max);
+                }
+                else
+                {
+                    if (mAxisSeaLevel[axis - 1] <= min)
+                    {
+                        verticalAxis->setMin(mAxisSeaLevel[axis - 1] * 2 - max);
+                        verticalAxis->setMax(max);
+                    }
+                    else if (max <= mAxisSeaLevel[axis - 1])
+                    {
+                        verticalAxis->setMin(min);
+                        verticalAxis->setMax(mAxisSeaLevel[axis - 1] * 2 - min);
+                    }
+                    else
+                    {
+                        double offset = std::max(mAxisSeaLevel[axis - 1] - min, max - mAxisSeaLevel[axis - 1]);
+                        verticalAxis->setMin(mAxisSeaLevel[axis - 1] - offset);
+                        verticalAxis->setMax(mAxisSeaLevel[axis - 1] + offset);
+                    }
+                }
             }
         }
 
@@ -250,7 +287,7 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
         for (QtCharts::QAbstractAxis *axis : chart()->axes(Qt::Vertical))
         {
             bool right = axis->alignment() == Qt::AlignRight;
-            if (mAxisLocked[right])
+            if (not isnan(mAxisSeaLevel[right]) or mAxisLocked[right])
             {
                 axes[right] = qobject_cast<QtCharts::QValueAxis *>(axis);
                 if (axes[right] != nullptr)

@@ -16,7 +16,7 @@ public:
     static constexpr uint32_t GetPrecision() noexcept { return 4u; }
     static constexpr  int64_t GetFactor() noexcept { return 10000; }
 
-    static constexpr Fixpoint Min() noexcept { return Fixpoint(std::numeric_limits<int64_t>::min() + 1, REPRESENTATION); }
+    static constexpr Fixpoint Min() noexcept { return Fixpoint(std::numeric_limits<int64_t>::min(), REPRESENTATION); }
     static constexpr Fixpoint Max() noexcept { return Fixpoint(std::numeric_limits<int64_t>::max(), REPRESENTATION); }
 
     // Accept default copy/assign/move

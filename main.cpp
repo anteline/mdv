@@ -31,6 +31,13 @@ int main(int argc, char *argv[])
     chart->AddSegments([&data](double idx) { return data.IndexToTime(idx); }, indicesRanges.first, indicesRanges.second);
     chart->SetHorizontalRange(data.GetDisplayRange());
 
+    for (IChart::Axis axis : {IChart::Axis::Left, IChart::Axis::Right})
+    {
+        Fixpoint const level = data.GetSeaLevel(axis - 1);
+        if (level != Fixpoint::Min())
+            chart->SetSeaLevel(axis, double(level));
+    }
+
     typedef std::pair<int64_t, double> Point;
     data.ForeachSeries([&chart, &data](char const *name, bool isLeft, Point const *begin, Point const *end)
     {
