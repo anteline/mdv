@@ -336,8 +336,6 @@ static qreal Round(qreal value)
     value *= sign;
 
     int factor = 1000;
-    if (10 < value)
-        factor /= 10;
     if (100 < value)
         factor /= 10;
     if (1000 < value)
