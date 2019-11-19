@@ -335,12 +335,7 @@ static qreal Round(qreal value)
     qreal sign = 1 - 2 * (value < 0);
     value *= sign;
 
-    int factor = 1000;
-    if (100 < value)
-        factor /= 10;
-    if (1000 < value)
-        factor /= 10;
-
+    int factor = 100;
     return sign * int64_t(value * factor + 0.5) / factor;
 }
 
