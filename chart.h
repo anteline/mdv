@@ -12,6 +12,7 @@
 
 namespace QtCharts {
 class QCategoryAxis;
+class QValueAxis;
 }
 
 class Chart : private QtCharts::QChartView, public IChart
@@ -60,6 +61,8 @@ private:
     void AddSeries(Axis axis, SeriesData series);
     void CreateCoordinators();
     void SetCoordinators();
+
+    void SetVerticalAxisRange(QtCharts::QValueAxis *verticalAxis, bool right, double min, double max);
 
     QtCharts::QCategoryAxis * GetHorizontalAxis();
     void OnHorizontalAxisScroll(int direction);

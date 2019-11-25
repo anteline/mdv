@@ -104,30 +104,7 @@ bool Chart::Show()
                     max = std::max(max, seriesData.mMax);
                 }
 
-                if (isnan(mAxisSeaLevel[axis - 1]))
-                {
-                    verticalAxis->setMin(min);
-                    verticalAxis->setMax(max);
-                }
-                else
-                {
-                    if (mAxisSeaLevel[axis - 1] <= min)
-                    {
-                        verticalAxis->setMin(mAxisSeaLevel[axis - 1] * 2 - max);
-                        verticalAxis->setMax(max);
-                    }
-                    else if (max <= mAxisSeaLevel[axis - 1])
-                    {
-                        verticalAxis->setMin(min);
-                        verticalAxis->setMax(mAxisSeaLevel[axis - 1] * 2 - min);
-                    }
-                    else
-                    {
-                        double offset = std::max(mAxisSeaLevel[axis - 1] - min, max - mAxisSeaLevel[axis - 1]);
-                        verticalAxis->setMin(mAxisSeaLevel[axis - 1] - offset);
-                        verticalAxis->setMax(mAxisSeaLevel[axis - 1] + offset);
-                    }
-                }
+                SetVerticalAxisRange(verticalAxis, axis == Axis::Right, min, max);
             }
         }
 
@@ -136,6 +113,34 @@ bool Chart::Show()
         return true;
     }
     return false;
+}
+
+void Chart::SetVerticalAxisRange(QtCharts::QValueAxis *verticalAxis, bool right, double min, double max)
+{
+    if (isnan(mAxisSeaLevel[right]))
+    {
+        verticalAxis->setMin(min);
+        verticalAxis->setMax(max);
+    }
+    else
+    {
+        if (mAxisSeaLevel[right] <= min)
+        {
+            verticalAxis->setMin(mAxisSeaLevel[right] * 2 - max);
+            verticalAxis->setMax(max);
+        }
+        else if (max <= mAxisSeaLevel[right])
+        {
+            verticalAxis->setMin(min);
+            verticalAxis->setMax(mAxisSeaLevel[right] * 2 - min);
+        }
+        else
+        {
+            double offset = std::max(mAxisSeaLevel[right] - min, max - mAxisSeaLevel[right]);
+            verticalAxis->setMin(mAxisSeaLevel[right] - offset);
+            verticalAxis->setMax(mAxisSeaLevel[right] + offset);
+        }
+    }
 }
 
 bool Chart::AddSegments(std::function<Time (double)> indexToTime, int64_t const *begin, int64_t const *end)
@@ -279,6 +284,48 @@ void Chart::mousePressEvent(QMouseEvent *event)
     QChartView::mousePressEvent(event);
 }
 
+class VerticalAxesRangeResetter
+{
+public:
+    VerticalAxesRangeResetter(QtCharts::QChart *chart, bool resetLeft, bool resetRight)
+    {
+        bool wouldReset[] = {resetLeft, resetRight};
+        mAxes[0] = mAxes[1] = nullptr;
+        if (chart == nullptr)
+            return;
+
+        for (QtCharts::QAbstractAxis *axis : chart->axes(Qt::Vertical))
+        {
+            bool right = axis->alignment() == Qt::AlignRight;
+            if (wouldReset[right])
+            {
+                mAxes[right] = qobject_cast<QtCharts::QValueAxis *>(axis);
+                if (mAxes[right] != nullptr)
+                {
+                    mRange[right][0] = mAxes[right]->min();
+                    mRange[right][1] = mAxes[right]->max();
+                }
+            }
+        }
+    }
+
+    ~VerticalAxesRangeResetter()
+    {
+        for (int i : {0, 1})
+        {
+            if (mAxes[i] != nullptr)
+            {
+                mAxes[i]->setMin(mRange[i][0]);
+                mAxes[i]->setMax(mRange[i][1]);
+            }
+        }
+    }
+
+private:
+    double mRange[2][2];
+    QtCharts::QValueAxis *mAxes[2];
+};
+
 void Chart::mouseReleaseEvent(QMouseEvent *event)
 {
     setRubberBand(QChartView::NoRubberBand);
@@ -288,22 +335,8 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
         Action &action = mActions.back();
         action.mComplete = true;
 
-        double range[2][2];
-        QtCharts::QValueAxis *axes[2] = {nullptr};
-
-        for (QtCharts::QAbstractAxis *axis : chart()->axes(Qt::Vertical))
-        {
-            bool right = axis->alignment() == Qt::AlignRight;
-            if (not isnan(mAxisSeaLevel[right]) or mAxisLocked[right])
-            {
-                axes[right] = qobject_cast<QtCharts::QValueAxis *>(axis);
-                if (axes[right] != nullptr)
-                {
-                    range[right][0] = axes[right]->min();
-                    range[right][1] = axes[right]->max();
-                }
-            }
-        }
+        VerticalAxesRangeResetter resetter(chart(), not isnan(mAxisSeaLevel[0]) or mAxisLocked[0], not isnan(mAxisSeaLevel[1]) or mAxisLocked[1]);
+        (void)resetter;
 
         if (action.mButton == Qt::LeftButton)
         {
@@ -316,15 +349,6 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
             QPoint pos = event->pos();
             chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
             action.mEnd = pos;
-        }
-
-        for (int i : {0, 1})
-        {
-            if (axes[i] != nullptr)
-            {
-                axes[i]->setMin(range[i][0]);
-                axes[i]->setMax(range[i][1]);
-            }
         }
     }
     QChartView::mouseReleaseEvent(event);
@@ -359,6 +383,9 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
 
     if ((event->buttons() & Qt::RightButton) != 0 and not mActions.empty() and mActions.back().mButton == Qt::RightButton)
     {
+        VerticalAxesRangeResetter resetter(chart(), not isnan(mAxisSeaLevel[0]) or mAxisLocked[0], not isnan(mAxisSeaLevel[1]) or mAxisLocked[1]);
+        (void)resetter;
+
         Action &action = mActions.back();
         chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
         action.mEnd = pos;
