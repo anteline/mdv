@@ -80,11 +80,9 @@ bool Chart::Show()
             QString label = ToString(mIndexToTime(index), 16u);
             horizontalAxis->append(label, index);
         }
-        if (mHorizontalRangeLength < mIndicesSegments.back() - mIndicesSegments.front())
-        {
-            horizontalAxis->setMin(mIndicesSegments.back() - mHorizontalRangeLength);
-            horizontalAxis->setMax(mIndicesSegments.back());
-        }
+
+        horizontalAxis->setMin(std::max(mIndicesSegments.front(), mIndicesSegments.back() - mHorizontalRangeLength));
+        horizontalAxis->setMax(mIndicesSegments.back());
         chart()->addAxis(horizontalAxis, Qt::AlignBottom);
 
         for (Axis axis : {Axis::Left, Axis::Right})
