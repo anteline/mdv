@@ -1,4 +1,5 @@
 #include <chart.h>
+#include <callout.h>
 #include <QPen>
 #include <QtCharts/QCategoryAxis>
 #include <QtCharts/QChart>
@@ -8,12 +9,8 @@
 #include <QtWidgets/QGraphicsTextItem>
 #include <algorithm>
 #include <limits>
-
-#include <iostream>
 #include <math.h>
 
-
-static char const *sValuePrefix[] = {"Bottom: ", "Left: ", "Right: "};
 
 static QString ToString(Time time, size_t length)
 {
@@ -23,17 +20,54 @@ static QString ToString(Time time, size_t length)
     return QString(str.data());
 }
 
+class Series : public IChart::ISeries
+{
+public:
+    explicit Series(Chart &chart, Fixpoint centre, char const *name)
+    :   mSeries(new QtCharts::QLineSeries),
+        mChart(chart),
+        mCentre(centre),
+        mMin(std::numeric_limits<double>::max()),
+        mMax(-std::numeric_limits<double>::max()),
+        mName(name)
+    {
+        mSeries->setName(name);
+    }
+
+    virtual void Commit() override final
+    {
+        if (mSeries != nullptr)
+            mChart.AddSeries(mSeries.release(), std::move(mName), mCentre, mMin, mMax);
+    }
+
+    virtual void Append(int64_t x, double y) override final
+    {
+        if (mSeries != nullptr)
+        {
+            mSeries->append(x, y);
+            mMin = std::min(mMin, y);
+            mMax = std::max(mMax, y);
+        }
+    }
+
+private:
+    std::unique_ptr<QtCharts::QLineSeries> mSeries;
+    Chart   &mChart;
+    Fixpoint mCentre;
+    double   mMin;
+    double   mMax;
+    std::string mName;
+};
+
 Chart::Chart()
 :   QtCharts::QChartView(new QtCharts::QChart, nullptr),
     mHorizontalRangeLength(std::numeric_limits<int64_t>::max()),
     mHorizontalRangeScroll(0),
     mHorizontalRangeScaler(1),
     mVisible(false),
-    mVLine(nullptr)
+    mVLine(nullptr),
+    mCallout(nullptr)
 {
-    mAxisLocked[0] = mAxisLocked[1] = false;
-    mAxisSeaLevel[0] = mAxisSeaLevel[1] = NAN;
-
     chart()->setMinimumSize(640, 480);
     chart()->legend()->setVisible(true);
     chart()->legend()->setAlignment(Qt::AlignBottom);
@@ -50,24 +84,19 @@ Chart::~Chart()
 {
 }
 
-void Chart::SetSeaLevel(Axis axis, double seaLevel)
+void Chart::RemoveCallout(Callout &callout)
 {
-    if (axis == Axis::Left)
-    {
-        mAxisSeaLevel[0] = seaLevel;
-    }
-    else if (axis == Axis::Right)
-    {
-        mAxisSeaLevel[1] = seaLevel;
-    }
+    if (mCallout == &callout)
+        mCallout = nullptr;
+
+    mCallouts.erase(std::find(mCallouts.begin(), mCallouts.end(), &callout));
+    delete &callout;
 }
 
 bool Chart::Show()
 {
     if (mVisible)
         return true;
-
-    CreateCoordinators();
 
     if (mIndexToTime and (not(mSeries[0].empty()) or not(mSeries[1].empty())))
     {
@@ -85,26 +114,8 @@ bool Chart::Show()
         horizontalAxis->setMax(mIndicesSegments.back());
         chart()->addAxis(horizontalAxis, Qt::AlignBottom);
 
-        for (Axis axis : {Axis::Left, Axis::Right})
-        {
-            if (not mSeries[axis - 1].empty())
-            {
-                double min = std::numeric_limits<double>::max(), max = -std::numeric_limits<double>::max();
-
-                QtCharts::QValueAxis *verticalAxis = new QtCharts::QValueAxis;
-                chart()->addAxis(verticalAxis, axis == Axis::Left ? Qt::AlignLeft : Qt::AlignRight);
-                for (SeriesData &seriesData : mSeries[axis - 1])
-                {
-                    seriesData.mSeries->attachAxis(horizontalAxis);
-                    seriesData.mSeries->attachAxis(verticalAxis);
-
-                    min = std::min(min, seriesData.mMin);
-                    max = std::max(max, seriesData.mMax);
-                }
-
-                SetVerticalAxisRange(verticalAxis, axis == Axis::Right, min, max);
-            }
-        }
+        AddCentreFixedData(horizontalAxis, mSeries[1]);
+        AddCentreUnfixedData(horizontalAxis, mSeries[0]);
 
         show();
         mVisible = true;
@@ -113,32 +124,72 @@ bool Chart::Show()
     return false;
 }
 
-void Chart::SetVerticalAxisRange(QtCharts::QValueAxis *verticalAxis, bool right, double min, double max)
+SeriesData::SeriesData(Chart &chart, QtCharts::QLineSeries *series, std::string name, double centre, double min, double max)
+:   mChart(&chart),
+    mSeries(series),
+    mAxis(nullptr),
+    mName(std::move(name)),
+    mCentre(centre),
+    mMin(min),
+    mMax(max)
 {
-    if (isnan(mAxisSeaLevel[right]))
+}
+
+void SeriesData::SetRange()
+{
+    if (mAxis == nullptr)
+        return;
+
+    double min = mMin, max = mMax;
+    if (mCentre * 2 < min + max)
     {
-        verticalAxis->setMin(min);
-        verticalAxis->setMax(max);
+        min = mCentre * 2 - max;
     }
-    else
+    else if (min + max < mCentre * 2)
     {
-        if (mAxisSeaLevel[right] <= min)
-        {
-            verticalAxis->setMin(mAxisSeaLevel[right] * 2 - max);
-            verticalAxis->setMax(max);
-        }
-        else if (max <= mAxisSeaLevel[right])
-        {
-            verticalAxis->setMin(min);
-            verticalAxis->setMax(mAxisSeaLevel[right] * 2 - min);
-        }
-        else
-        {
-            double offset = std::max(mAxisSeaLevel[right] - min, max - mAxisSeaLevel[right]);
-            verticalAxis->setMin(mAxisSeaLevel[right] - offset);
-            verticalAxis->setMax(mAxisSeaLevel[right] + offset);
-        }
+        max = mCentre * 2 - min;
     }
+    mAxis->setMin(min);
+    mAxis->setMax(max);
+}
+
+void Chart::AddCentreFixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data)
+{
+    if (data.empty())
+        return;
+
+    for (std::unique_ptr<SeriesData> const &seriesData : data)
+    {
+        seriesData->mAxis = new QtCharts::QValueAxis;
+        chart()->addAxis(seriesData->mAxis, Qt::AlignLeft);
+
+        seriesData->mSeries->attachAxis(horizontalAxis);
+        seriesData->mSeries->attachAxis(seriesData->mAxis);
+
+        seriesData->SetRange();
+    }
+}
+
+void Chart::AddCentreUnfixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data)
+{
+    if (data.empty())
+        return;
+
+    QtCharts::QValueAxis *verticalAxis = new QtCharts::QValueAxis;
+    chart()->addAxis(verticalAxis, Qt::AlignRight);
+
+    double min = data.front()->mMin, max = data.front()->mMax;
+    for (std::unique_ptr<SeriesData> const &seriesData : data)
+    {
+        seriesData->mSeries->attachAxis(horizontalAxis);
+        seriesData->mSeries->attachAxis(verticalAxis);
+
+        min = std::min(min, seriesData->mMin);
+        max = std::max(max, seriesData->mMax);
+    }
+
+    verticalAxis->setMin(min);
+    verticalAxis->setMax(max);
 }
 
 bool Chart::AddSegments(std::function<Time (double)> indexToTime, int64_t const *begin, int64_t const *end)
@@ -161,105 +212,64 @@ void Chart::SetHorizontalRange(int64_t length)
         mHorizontalRangeLength = length;
 }
 
-class Chart::Series : public IChart::ISeries
-{
-public:
-    explicit Series(Chart &chart, Axis axis, char const *name)
-    :   mSeries(new QtCharts::QLineSeries),
-        mChart(chart),
-        mAxis(axis),
-        mMin(std::numeric_limits<double>::max()),
-        mMax(-std::numeric_limits<double>::max())
-    {
-        mSeries->setName(name);
-    }
-
-    virtual void Commit() override final
-    {
-        if (mSeries != nullptr)
-            mChart.AddSeries(mAxis, SeriesData{mSeries.release(), mMin, mMax});
-    }
-
-    virtual void Append(int64_t x, double y) override final
-    {
-        if (mSeries != nullptr)
-        {
-            mSeries->append(x, y);
-            mMin = std::min(mMin, y);
-            mMax = std::max(mMax, y);
-        }
-    }
-
-private:
-    std::unique_ptr<QtCharts::QLineSeries> mSeries;
-    Chart &mChart;
-    Axis mAxis;
-    double mMin;
-    double mMax;
-};
-
-std::unique_ptr<IChart::ISeries> Chart::CreateSeries(Axis axis, char const *name)
+std::unique_ptr<IChart::ISeries> Chart::CreateSeries(Fixpoint axisCentre, char const *name)
 {
     if (name != nullptr)
-    {
-        if (axis == Axis::Left or axis == Axis::Right)
-            return std::unique_ptr<ISeries>(new Series(*this, axis, name));
-    }
+        return std::unique_ptr<ISeries>(new Series(*this, axisCentre, name));
     return nullptr;
 }
 
-void Chart::AddSeries(Axis axis, SeriesData series)
+void Chart::AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint centre, double min, double max)
 {
-    mSeries[axis - 1].push_back(std::move(series));
-    chart()->addSeries(series.mSeries);
+    bool fixedCentre = (centre != Fixpoint::Min());
+    mSeries[fixedCentre].push_back(std::unique_ptr<SeriesData>(new SeriesData(*this, series, std::move(name), double(centre), min, max)));
+    chart()->addSeries(series);
+
+    connect(series, &QtCharts::QLineSeries::hovered, mSeries[fixedCentre].back().get(), &SeriesData::AddCallout);
 }
 
-void Chart::CreateCoordinators()
+void Chart::KeepCallout()
 {
-    if (mValues[Axis::Horizontal] == nullptr)
-    {
-        mValues[Axis::Horizontal].reset(new QGraphicsSimpleTextItem(chart()));
-        for (Axis axis : {Axis::Left, Axis::Right})
-        {
-            if (not mSeries[axis - 1].empty())
-                mValues[axis].reset(new QGraphicsSimpleTextItem(chart()));
-        }
-    }
-    SetCoordinators();
+    if (mCallout != nullptr)
+        mCallouts.push_back(mCallout);
+    mCallout = new Callout(*this);
 }
 
-void Chart::SetCoordinators()
+void SeriesData::AddCallout(QPointF pos, bool state)
 {
-    qreal middle = chart()->size().width() / 2;
-    qreal height = chart()->size().height() - 20;
+    mChart->AddCallout(*this, pos, state);
+}
 
-    if (mValues[Axis::Left] != nullptr and mValues[Axis::Right] != nullptr)
-    {
-        mValues[Axis::Horizontal]->setPos(middle - 320, height);
-        mValues[Axis::Left]->setPos(middle, height);
-        mValues[Axis::Right]->setPos(middle + 160, height);
+std::string SeriesData::GetText(Time time, double value) const
+{
+    char buff[mName.length() + 64];
+    snprintf(buff, sizeof(buff), "Time=%.12s \n%s=%.4f ", time.ToString().data() + 11, mName.data(), value);
+    return std::string(buff);
+}
 
-    }
-    else if (mValues[Axis::Left] != nullptr)
+void Chart::AddCallout(SeriesData &series, QPointF pos, bool state)
+{
+    if (mCallout == nullptr)
+        mCallout = new Callout(*this);
+
+    if (state)
     {
-        mValues[Axis::Horizontal]->setPos(middle - 320, height);
-        mValues[Axis::Left]->setPos(middle, height);
-    }
-    else if (mValues[Axis::Right] != nullptr)
-    {
-        mValues[Axis::Horizontal]->setPos(middle - 320, height);
-        mValues[Axis::Right]->setPos(middle, height);
+        mCallout->SetText(series.GetText(mIndexToTime(pos.x()), pos.y()));
+        mCallout->SetAnchor(pos, series.mSeries);
+        mCallout->setZValue(11);
+        mCallout->UpdateGeometry();
+        mCallout->show();
     }
     else
     {
-        mValues[Axis::Horizontal].reset();
+        mCallout->hide();
     }
+}
 
-    for (Axis axis : {Axis::Horizontal, Axis::Left, Axis::Right})
-    {
-        if (mValues[axis] != nullptr)
-            mValues[axis]->setText(sValuePrefix[axis]);
-    }
+void Chart::UpdateCalloutsGeometry()
+{
+    for (Callout *callout : mCallouts)
+        callout->UpdateGeometry();
 }
 
 void Chart::resizeEvent(QResizeEvent *event)
@@ -268,7 +278,8 @@ void Chart::resizeEvent(QResizeEvent *event)
     {
         scene()->setSceneRect(QRect(QPoint(0, 0), event->size()));
         chart()->resize(event->size());
-        SetCoordinators();
+
+        UpdateCalloutsGeometry();
     }
     QChartView::resizeEvent(event);
 }
@@ -282,48 +293,6 @@ void Chart::mousePressEvent(QMouseEvent *event)
     QChartView::mousePressEvent(event);
 }
 
-class VerticalAxesRangeResetter
-{
-public:
-    VerticalAxesRangeResetter(QtCharts::QChart *chart, bool resetLeft, bool resetRight)
-    {
-        bool wouldReset[] = {resetLeft, resetRight};
-        mAxes[0] = mAxes[1] = nullptr;
-        if (chart == nullptr)
-            return;
-
-        for (QtCharts::QAbstractAxis *axis : chart->axes(Qt::Vertical))
-        {
-            bool right = axis->alignment() == Qt::AlignRight;
-            if (wouldReset[right])
-            {
-                mAxes[right] = qobject_cast<QtCharts::QValueAxis *>(axis);
-                if (mAxes[right] != nullptr)
-                {
-                    mRange[right][0] = mAxes[right]->min();
-                    mRange[right][1] = mAxes[right]->max();
-                }
-            }
-        }
-    }
-
-    ~VerticalAxesRangeResetter()
-    {
-        for (int i : {0, 1})
-        {
-            if (mAxes[i] != nullptr)
-            {
-                mAxes[i]->setMin(mRange[i][0]);
-                mAxes[i]->setMax(mRange[i][1]);
-            }
-        }
-    }
-
-private:
-    double mRange[2][2];
-    QtCharts::QValueAxis *mAxes[2];
-};
-
 void Chart::mouseReleaseEvent(QMouseEvent *event)
 {
     setRubberBand(QChartView::NoRubberBand);
@@ -332,9 +301,6 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
     {
         Action &action = mActions.back();
         action.mComplete = true;
-
-        VerticalAxesRangeResetter resetter(chart(), not isnan(mAxisSeaLevel[0]) or mAxisLocked[0], not isnan(mAxisSeaLevel[1]) or mAxisLocked[1]);
-        (void)resetter;
 
         if (action.mButton == Qt::LeftButton)
         {
@@ -348,45 +314,25 @@ void Chart::mouseReleaseEvent(QMouseEvent *event)
             chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
             action.mEnd = pos;
         }
+
+        for (std::unique_ptr<SeriesData> const &seriesData : mSeries[1])
+            seriesData->SetRange();
     }
     QChartView::mouseReleaseEvent(event);
-}
-
-static qreal Round(qreal value)
-{
-    qreal sign = 1 - 2 * (value < 0);
-    value *= sign;
-
-    int factor = 100;
-    return sign * int64_t(value * factor + 0.5) / factor;
 }
 
 void Chart::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint const pos = event->pos();
 
-    if (mValues[Axis::Horizontal] != nullptr and mIndexToTime)
-    {
-        Time time = mIndexToTime(chart()->mapToValue(pos).x());
-        mValues[Axis::Horizontal]->setText(QString(sValuePrefix[Axis::Horizontal]) + ToString(time, 22u));
-        for (Axis axis : {Axis::Left, Axis::Right})
-        {
-            if (mValues[axis] != nullptr)
-            {
-                qreal value = chart()->mapToValue(pos, mSeries[axis - 1][0].mSeries).y();
-                mValues[axis]->setText(QString(sValuePrefix[axis]) + QString("%1").arg(Round(value)));
-            }
-        }
-    }
-
     if ((event->buttons() & Qt::RightButton) != 0 and not mActions.empty() and mActions.back().mButton == Qt::RightButton)
     {
-        VerticalAxesRangeResetter resetter(chart(), not isnan(mAxisSeaLevel[0]) or mAxisLocked[0], not isnan(mAxisSeaLevel[1]) or mAxisLocked[1]);
-        (void)resetter;
-
         Action &action = mActions.back();
         chart()->scroll(action.mEnd.x() - pos.x(), pos.y() - action.mEnd.y());
         action.mEnd = pos;
+
+        for (std::unique_ptr<SeriesData> const &seriesData : mSeries[1])
+            seriesData->SetRange();
     }
 
     if (mVLine->isVisible() and scene() != nullptr)
@@ -395,11 +341,6 @@ void Chart::mouseMoveEvent(QMouseEvent *event)
         mVLine->setLine(pos.x(), rect.top(), pos.x(), rect.bottom());
     }
     QChartView::mouseMoveEvent(event);
-}
-
-void Chart::OnKeyF(int idx)
-{
-    mAxisLocked[idx - 1] = bool(1 - mAxisLocked[idx - 1]);
 }
 
 void Chart::OnToggleVerticalLine()
@@ -413,12 +354,10 @@ void Chart::keyPressEvent(QKeyEvent *event)
     {
     case Qt::Key_Escape:
         return OnKeyEscape();
-    case Qt::Key_F1:
-        return OnKeyF(1);
-    case Qt::Key_F2:
-        return OnKeyF(2);
     case Qt::Key_F3:
         return OnToggleVerticalLine();
+    case Qt::Key_F:
+        return KeepCallout();
     case Qt::Key_Left:
         return OnHorizontalAxisScroll(1);
     case Qt::Key_Right:
@@ -433,8 +372,6 @@ void Chart::keyPressEvent(QKeyEvent *event)
 
 void Chart::OnKeyEscape()
 {
-    mAxisLocked[0] = mAxisLocked[1] = false;
-
     if (mActions.empty())
     {
         // redraw all components

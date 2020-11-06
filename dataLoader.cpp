@@ -8,7 +8,6 @@ struct DataHeader
 {
     uint32_t mEndianChecker;
     uint8_t  mVersionNumber[4];
-    Fixpoint mSeaLevels[2];
     uint32_t mNumSegments;
     uint32_t mNumSeries;
     Interval mTimeTick;
@@ -37,8 +36,6 @@ DataLoader::DataLoader(void const *data, size_t length)
 :   mSegments(nullptr),
     mDisplayRange(0)
 {
-    mSeaLevels[0] = mSeaLevels[1] = Fixpoint::Min();
-
     if (data == nullptr or length <= sizeof(DataHeader))
     {
         std::cout << "Market data viewer requires more than " << sizeof(DataHeader) << " bytes of input data." << std::endl;
@@ -82,9 +79,6 @@ DataLoader::DataLoader(void const *data, size_t length)
         return;
     }
 
-    mSeaLevels[0] = header->mSeaLevels[0];
-    mSeaLevels[1] = header->mSeaLevels[1];
-
     Segment const *segments = reinterpret_cast<Segment const *>(header + 1);
     for (uint32_t i = 0; i < header->mNumSegments; ++i)
     {
@@ -116,9 +110,9 @@ DataLoader::DataLoader(void const *data, size_t length)
     {
         struct SeriesHeader
         {
+            Fixpoint mAxisCentre;
             uint32_t mNumPoints;
-            uint16_t mRightAxis;
-            uint16_t mNameLength;
+            uint32_t mNameLength;
         };
 
         if (length <= sizeof(SeriesHeader))
@@ -141,7 +135,7 @@ DataLoader::DataLoader(void const *data, size_t length)
 
         std::vector<std::pair<int64_t, double>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
         if (not points.empty())
-            series.push_back(Series{name, seriesHeader->mRightAxis == 0u, std::move(points)});
+            series.push_back(Series{name, seriesHeader->mAxisCentre, std::move(points)});
     }
 
     if (0 < length)

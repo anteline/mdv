@@ -7,15 +7,40 @@
 #include <QtCharts/QLineSeries>
 
 #include <memory>
+#include <string>
 #include <vector>
 
+class Callout;
+class Chart;
 
 namespace QtCharts {
 class QCategoryAxis;
 class QValueAxis;
 }
 
-class Chart : private QtCharts::QChartView, public IChart
+struct SeriesData : public QObject
+{
+    Q_OBJECT
+
+public slots:
+    void AddCallout(QPointF point, bool state);
+
+public:
+    SeriesData(Chart &chart, QtCharts::QLineSeries *series, std::string name, double centre, double min, double max);
+    void SetRange();
+
+    std::string GetText(Time time, double value) const;
+
+    Chart  *mChart;
+    QtCharts::QLineSeries *mSeries;
+    QtCharts::QValueAxis  *mAxis;
+    std::string mName;
+    double  mCentre;
+    double  mMin;
+    double  mMax;
+};
+
+class Chart : public QtCharts::QChartView, public IChart
 {
     Q_OBJECT
 
@@ -28,26 +53,19 @@ public:
     virtual bool AddSegments(std::function<Time (double)> indexToTime, int64_t const *begin, int64_t const *end) override final;
     virtual void SetHorizontalRange(int64_t length) override final;
 
-    virtual void SetSeaLevel(Axis axis, double seaLevel) override final;
+    virtual std::unique_ptr<ISeries> CreateSeries(Fixpoint axisCentre, char const *name) override final;
 
-    virtual std::unique_ptr<ISeries> CreateSeries(Axis axis, char const *name) override final;
+    void AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint centre, double min, double max);
+    void AddCallout(SeriesData &seriesData, QPointF point, bool state);
+    void RemoveCallout(Callout &callout);
 
 private:
-    class Series;
-
     struct Action
     {
         bool mComplete;
         Qt::MouseButton mButton;
         QPoint mBegin;
         QPoint mEnd;
-    };
-
-    struct SeriesData
-    {
-        QtCharts::QLineSeries *mSeries;
-        double mMin;
-        double mMax;
     };
 
     virtual void resizeEvent(QResizeEvent *event) override;
@@ -58,11 +76,11 @@ private:
 
     virtual void keyPressEvent(QKeyEvent *event) override;
 
-    void AddSeries(Axis axis, SeriesData series);
-    void CreateCoordinators();
-    void SetCoordinators();
+    void AddCentreUnfixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data);
+    void AddCentreFixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data);
 
-    void SetVerticalAxisRange(QtCharts::QValueAxis *verticalAxis, bool right, double min, double max);
+    void KeepCallout();
+    void UpdateCalloutsGeometry();
 
     QtCharts::QCategoryAxis * GetHorizontalAxis();
     void OnHorizontalAxisScroll(int direction);
@@ -70,7 +88,6 @@ private:
     void ResetActions();
 
     void OnKeyEscape();
-    void OnKeyF(int idx);
     void OnToggleVerticalLine();
 
     std::function<Time (double)> mIndexToTime;
@@ -80,16 +97,15 @@ private:
     int32_t mHorizontalRangeScroll;
     int16_t mHorizontalRangeScaler;
     bool mVisible;
-    bool mAxisLocked[2];
-    double mAxisSeaLevel[2];
 
     QGraphicsLineItem *mVLine;
 
-    std::unique_ptr<QGraphicsSimpleTextItem> mValues[3];
-
     std::vector<Action> mActions;
 
-    std::vector<SeriesData> mSeries[2];
+    std::vector<std::unique_ptr<SeriesData>> mSeries[2];
+
+    std::vector<Callout *> mCallouts;
+    Callout *mCallout;
 };
 
 #endif // CHART_H
