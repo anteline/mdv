@@ -145,7 +145,7 @@ public:
     std::array<char, 24> ToString() const noexcept;
 
 private:
-    static constexpr int64_t CalcAbs(int64_t value) noexcept { return (value & std::numeric_limits<int64_t>::min()) ^ value; }
+    static constexpr int64_t CalcAbs(int64_t value) noexcept { return (value ^ (0 - (value < 0))) + int(value < 0); }
     static constexpr int64_t GetSign(int64_t v1, int64_t v2) noexcept { return (v1 ^ v2) & std::numeric_limits<int64_t>::min(); }
 
     template <typename T>

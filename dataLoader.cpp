@@ -133,7 +133,7 @@ DataLoader::DataLoader(void const *data, size_t length)
         addr = data + seriesHeader->mNumPoints;
         length -= seriesLength;
 
-        std::vector<std::pair<int64_t, double>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
+        std::vector<std::pair<int64_t, Fixpoint>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
         if (not points.empty())
             series.push_back(Series{name, seriesHeader->mAxisCentre, std::move(points)});
     }
@@ -181,30 +181,30 @@ std::vector<int64_t> DataLoader::CalcSegments(Interval timeTick, Segment const *
     return std::move(segments);
 }
 
-std::vector<std::pair<int64_t, double>> DataLoader::LoadPoints(Data const *begin, Data const *end) const
+std::vector<std::pair<int64_t, Fixpoint>> DataLoader::LoadPoints(Data const *begin, Data const *end) const
 {
-    std::vector<std::pair<int64_t, double>> rtn;
+    std::vector<std::pair<int64_t, Fixpoint>> rtn;
     rtn.reserve(size_t(end - begin));
 
     size_t segIdx = 0;
     for (Data const *it = begin; it < end; ++it)
     {
         if (it != begin and it->first <= (it - 1)->first)
-            return std::vector<std::pair<int64_t, double>>();
+            return std::vector<std::pair<int64_t, Fixpoint>>();
 
         while (mSegments[segIdx].second < it->first)
         {
             if (mIndicesRanges.size() - 2 < ++segIdx)
-                return std::vector<std::pair<int64_t, double>>();
+                return std::vector<std::pair<int64_t, Fixpoint>>();
         }
 
         if (it->first < mSegments[segIdx].first)
-            return std::vector<std::pair<int64_t, double>>();
+            return std::vector<std::pair<int64_t, Fixpoint>>();
 
         Interval interval = it->first - mSegments[segIdx].first;
         if (interval % mTimeTick != Interval())
-            return std::vector<std::pair<int64_t, double>>();
-        rtn.push_back(std::make_pair(mIndicesRanges[segIdx] + interval / mTimeTick, double(it->second)));
+            return std::vector<std::pair<int64_t, Fixpoint>>();
+        rtn.push_back(std::make_pair(mIndicesRanges[segIdx] + interval / mTimeTick, it->second));
     }
     return std::move(rtn);
 }

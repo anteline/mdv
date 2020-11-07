@@ -22,6 +22,7 @@ public:
     operator bool() const noexcept { return 0 < mDisplayRange; }
 
     Time IndexToTime(double index);
+    Interval GetTimeTick() const noexcept { return mTimeTick; }
 
     std::pair<int64_t const *, int64_t const *> GetIndicesRanges() const
     {
@@ -41,13 +42,13 @@ protected:
     typedef std::pair<Time, Fixpoint> Data;
 
     static std::vector<int64_t> CalcSegments(Interval timeTick, Segment const *begin, Segment const *end);
-    std::vector<std::pair<int64_t, double>> LoadPoints(Data const *begin, Data const *end) const;
+    std::vector<std::pair<int64_t, Fixpoint>> LoadPoints(Data const *begin, Data const *end) const;
 
     struct Series
     {
         char const *mName;
         Fixpoint    mAxisCentre;
-        std::vector<std::pair<int64_t, double>> mData;
+        std::vector<std::pair<int64_t, Fixpoint>> mData;
     };
 
     std::vector<int64_t> mIndicesRanges;

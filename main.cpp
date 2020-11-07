@@ -29,9 +29,10 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<Chart> chart(new Chart);
     chart->AddSegments([&data](double idx) { return data.IndexToTime(idx); }, indicesRanges.first, indicesRanges.second);
+    chart->SetTimeTick(data.GetTimeTick());
     chart->SetHorizontalRange(data.GetDisplayRange());
 
-    typedef std::pair<int64_t, double> Point;
+    typedef std::pair<int64_t, Fixpoint> Point;
     data.ForeachSeries([&chart, &data](char const *name, Fixpoint axisCentre, Point const *begin, Point const *end)
     {
         std::unique_ptr<IChart::ISeries> series = chart->CreateSeries(axisCentre, name);

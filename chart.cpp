@@ -26,6 +26,7 @@ public:
     explicit Series(Chart &chart, Fixpoint centre, char const *name)
     :   mSeries(new QtCharts::QLineSeries),
         mChart(chart),
+        mUnit(Fixpoint::Min()),
         mCentre(centre),
         mMin(std::numeric_limits<double>::max()),
         mMax(-std::numeric_limits<double>::max()),
@@ -37,22 +38,53 @@ public:
     virtual void Commit() override final
     {
         if (mSeries != nullptr)
-            mChart.AddSeries(mSeries.release(), std::move(mName), mCentre, mMin, mMax);
+            mChart.AddSeries(mSeries.release(), std::move(mName), mUnit, mCentre, mMin, mMax);
     }
 
-    virtual void Append(int64_t x, double y) override final
+    virtual void Append(int64_t x, Fixpoint y) override final
     {
         if (mSeries != nullptr)
         {
-            mSeries->append(x, y);
-            mMin = std::min(mMin, y);
-            mMax = std::max(mMax, y);
+            SetUnit(y);
+
+            double value = double(y);
+            mSeries->append(x, value);
+            mMin = std::min(mMin, value);
+            mMax = std::max(mMax, value);
         }
     }
 
 private:
+    void SetUnit(Fixpoint value)
+    {
+        if (value == 0 or mUnit == value)
+            return;
+
+        if (mUnit == Fixpoint::Min())
+        {
+            mUnit = value.Abs();
+            return;
+        }
+
+        int64_t x = mUnit.Abs().GetRepresentation();
+        int64_t y = value.Abs().GetRepresentation();
+        if (x < y)
+            std::swap(x, y);
+
+        while (true)
+        {
+            int64_t z = x % y;
+            if (z == 0)
+                break;
+            x = y;
+            y = z;
+        }
+        mUnit = Fixpoint(y, Fixpoint::REPRESENTATION);
+    }
+
     std::unique_ptr<QtCharts::QLineSeries> mSeries;
     Chart   &mChart;
+    Fixpoint mUnit;
     Fixpoint mCentre;
     double   mMin;
     double   mMax;
@@ -124,12 +156,13 @@ bool Chart::Show()
     return false;
 }
 
-SeriesData::SeriesData(Chart &chart, QtCharts::QLineSeries *series, std::string name, double centre, double min, double max)
+SeriesData::SeriesData(Chart &chart, QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max)
 :   mChart(&chart),
     mSeries(series),
     mAxis(nullptr),
     mName(std::move(name)),
-    mCentre(centre),
+    mUnit(unit),
+    mCentre(double(centre)),
     mMin(min),
     mMax(max)
 {
@@ -219,10 +252,10 @@ std::unique_ptr<IChart::ISeries> Chart::CreateSeries(Fixpoint axisCentre, char c
     return nullptr;
 }
 
-void Chart::AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint centre, double min, double max)
+void Chart::AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max)
 {
     bool fixedCentre = (centre != Fixpoint::Min());
-    mSeries[fixedCentre].push_back(std::unique_ptr<SeriesData>(new SeriesData(*this, series, std::move(name), double(centre), min, max)));
+    mSeries[fixedCentre].push_back(std::unique_ptr<SeriesData>(new SeriesData(*this, series, std::move(name), unit, centre, min, max)));
     chart()->addSeries(series);
 
     connect(series, &QtCharts::QLineSeries::hovered, mSeries[fixedCentre].back().get(), &SeriesData::AddCallout);
@@ -242,8 +275,49 @@ void SeriesData::AddCallout(QPointF pos, bool state)
 
 std::string SeriesData::GetText(Time time, double value) const
 {
+    Interval timeTick = mChart->GetTimeTick();
+    Interval timeRemainder = (time - PosixEpoch()) % timeTick;
+    time = time - timeRemainder + timeTick * int(timeTick <= timeRemainder * 2);
+
+    int timeLength = 9;
+    for (int i = 0; i < 10; ++i)
+    {
+        if (timeTick % Seconds(1) == Nanoseconds(0))
+            break;
+        timeTick *= 10;
+        ++timeLength;
+    }
+    if (timeLength == 9)
+        --timeLength;
+
+    int64_t x = Fixpoint(value).GetRepresentation();
+    int64_t y = mUnit.GetRepresentation();
+    int64_t remainder = x % y;
+    x -= remainder;
+
+    if (y <= remainder * 2)
+    {
+        x += y;
+    }
+    else if (y + remainder * 2 <= 0)
+    {
+        x -= y;
+    }
+    value = double(Fixpoint(x, Fixpoint::REPRESENTATION));
+
+    Fixpoint unit = mUnit;
+    int valueLength = 0;
+    while (unit.GetRepresentation() % Fixpoint(1).GetRepresentation() != 0)
+    {
+        ++valueLength;
+        unit *= 10;
+    }
+
+    char fmt[32];
+    snprintf(fmt, sizeof(fmt), "Time=%%.%ds \n%%s=%%.%df ", timeLength, valueLength);
+
     char buff[mName.length() + 64];
-    snprintf(buff, sizeof(buff), "Time=%.12s \n%s=%.4f ", time.ToString().data() + 11, mName.data(), value);
+    snprintf(buff, sizeof(buff), fmt, time.ToString().data() + 11, mName.data(), value);
     return std::string(buff);
 }
 
