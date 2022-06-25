@@ -27,7 +27,6 @@ public slots:
 
 public:
     SeriesData(Chart &chart, QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max);
-    void SetRange();
 
     std::string GetText(Time time, double value) const;
 
@@ -55,9 +54,11 @@ public:
     virtual void SetTimeTick(Interval timeTick) override final { mTimeTick = timeTick; }
     virtual void SetHorizontalRange(int64_t length) override final;
 
-    virtual std::unique_ptr<ISeries> CreateSeries(Fixpoint axisCentre, char const *name) override final;
+    virtual std::unique_ptr<ISeries> CreateSeries(Fixpoint axisCentre, char const *name, char const *group) override final;
 
     void AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max);
+    void AddSeries(QtCharts::QLineSeries *series, std::string name, std::string group, Fixpoint unit, double min, double max);
+
     void AddCallout(SeriesData &seriesData, QPointF point, bool state);
     void RemoveCallout(Callout &callout);
 
@@ -80,8 +81,13 @@ private:
 
     virtual void keyPressEvent(QKeyEvent *event) override;
 
+    std::unique_ptr<SeriesData> CreateSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max);
+
     void AddCentreUnfixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data);
     void AddCentreFixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vector<std::unique_ptr<SeriesData>> const &data);
+
+    void SetRange(std::vector<std::unique_ptr<SeriesData>> const &data);
+    void SetRanges();
 
     void KeepCallout();
     void UpdateCalloutsGeometry();
@@ -108,7 +114,8 @@ private:
 
     std::vector<Action> mActions;
 
-    std::vector<std::unique_ptr<SeriesData>> mSeries[2];
+    std::vector<std::vector<std::unique_ptr<SeriesData>>> mSeries;
+    std::vector<std::pair<std::string, std::unique_ptr<SeriesData>>> mPendingSeries;
 
     std::vector<Callout *> mCallouts;
     Callout *mCallout;

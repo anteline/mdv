@@ -33,9 +33,9 @@ int main(int argc, char *argv[])
     chart->SetHorizontalRange(data.GetDisplayRange());
 
     typedef std::pair<int64_t, Fixpoint> Point;
-    data.ForeachSeries([&chart, &data](char const *name, Fixpoint axisCentre, Point const *begin, Point const *end)
+    data.ForeachSeries([&chart, &data](char const *name, char const *group, Fixpoint axisCentre, Point const *begin, Point const *end)
     {
-        std::unique_ptr<IChart::ISeries> series = chart->CreateSeries(axisCentre, name);
+        std::unique_ptr<IChart::ISeries> series = chart->CreateSeries(axisCentre, name, group);
         for (Point const *point = begin; point < end; ++point)
             series->Append(point->first, point->second);
         series->Commit();

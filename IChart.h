@@ -33,7 +33,7 @@ public:
     virtual void SetTimeTick(Interval timeTick) = 0;
     virtual void SetHorizontalRange(int64_t length) = 0;
 
-    virtual std::unique_ptr<ISeries> CreateSeries(Fixpoint axisCentre, char const *name) = 0;
+    virtual std::unique_ptr<ISeries> CreateSeries(Fixpoint axisCentre, char const *name, char const *group) = 0;
 };
 
 #endif // ICHART_H

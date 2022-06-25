@@ -34,7 +34,7 @@ public:
     void ForeachSeries(Actor const &actor) const
     {
         for (Series const &series : mSeries)
-            actor(series.mName, series.mAxisCentre, &series.mData[0], &series.mData[series.mData.size()]);
+            actor(series.mName, series.mGroup, series.mAxisCentre, &series.mData[0], &series.mData[series.mData.size()]);
     }
 
 protected:
@@ -47,6 +47,7 @@ protected:
     struct Series
     {
         char const *mName;
+        char const *mGroup;
         Fixpoint    mAxisCentre;
         std::vector<std::pair<int64_t, Fixpoint>> mData;
     };

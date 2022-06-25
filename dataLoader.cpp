@@ -112,7 +112,8 @@ DataLoader::DataLoader(void const *data, size_t length)
         {
             Fixpoint mAxisCentre;
             uint32_t mNumPoints;
-            uint32_t mNameLength;
+            uint16_t mNameLength;
+            uint16_t mGroupLength;
         };
 
         if (length <= sizeof(SeriesHeader))
@@ -122,7 +123,8 @@ DataLoader::DataLoader(void const *data, size_t length)
         }
         SeriesHeader const *seriesHeader = static_cast<SeriesHeader const *>(addr);
         char const *name = reinterpret_cast<char const *>(seriesHeader + 1);
-        std::pair<Time, Fixpoint> const *data = AlignTo<std::pair<Time, Fixpoint>>(name + seriesHeader->mNameLength + 1);
+        char const *group = name + seriesHeader->mNameLength + int(seriesHeader->mGroupLength != 0u);
+        std::pair<Time, Fixpoint> const *data = AlignTo<std::pair<Time, Fixpoint>>(group + seriesHeader->mGroupLength + 1);
 
         size_t seriesLength = size_t(reinterpret_cast<char const *>(data + seriesHeader->mNumPoints) - static_cast<char const *>(addr));
         if (length < seriesLength)
@@ -135,7 +137,7 @@ DataLoader::DataLoader(void const *data, size_t length)
 
         std::vector<std::pair<int64_t, Fixpoint>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
         if (not points.empty())
-            series.push_back(Series{name, seriesHeader->mAxisCentre, std::move(points)});
+            series.push_back(Series{name, group, seriesHeader->mAxisCentre, std::move(points)});
     }
 
     if (0 < length)
