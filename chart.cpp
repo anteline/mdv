@@ -188,10 +188,11 @@ void Chart::AddCentreFixedData(QtCharts::QCategoryAxis *horizontalAxis, std::vec
         return;
 
     QtCharts::QValueAxis *axis = new QtCharts::QValueAxis;
+    chart()->addAxis(axis, Qt::AlignLeft);
+
     for (std::unique_ptr<SeriesData> const &seriesData : data)
     {
-        chart()->addAxis(seriesData->mAxis = axis, Qt::AlignLeft);
-
+        seriesData->mAxis = axis;
         seriesData->mSeries->attachAxis(horizontalAxis);
         seriesData->mSeries->attachAxis(axis);
     }
