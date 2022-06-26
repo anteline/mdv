@@ -267,10 +267,14 @@ void Chart::AddSeries(QtCharts::QLineSeries *series, std::string name, std::stri
 
     for (uint32_t i = 1u; i < mSeries.size(); ++i)
     {
-        if (mSeries[i][0]->mName == group)
+        for (auto const &it : mSeries[i])
         {
-            mSeries[i].push_back(std::move(data));
-            return;
+            if (it->mName == group)
+            {
+                mSeries[i].push_back(std::move(data));
+                AddPendingSeries(mSeries[i].back()->mName, mSeries[i]);
+                return;
+            }
         }
     }
 
@@ -290,12 +294,17 @@ void Chart::AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint 
     mSeries.resize(mSeries.size() + uint8_t(not mSeries.back().empty()));
     mSeries.back().push_back(std::move(data));
 
+    AddPendingSeries(mSeries.back().back()->mName, mSeries.back());
+}
+
+void Chart::AddPendingSeries(std::string const &name, std::vector<std::unique_ptr<SeriesData>> &series)
+{
     auto CheckName = [&name](std::pair<std::string, std::unique_ptr<SeriesData>> const &pair) { return pair.first == name; };
     auto it = std::remove_if(mPendingSeries.begin(), mPendingSeries.end(), CheckName);
 
-    mSeries.back().resize(std::distance(it, mPendingSeries.end()) + 1);
+    series.reserve(size_t(std::distance(it, mPendingSeries.end())) + series.size());
     for (auto itr = it; itr != mPendingSeries.end(); ++itr)
-        mSeries.back().push_back(std::move(itr->second));
+        series.push_back(std::move(itr->second));
 
     mPendingSeries.erase(it, mPendingSeries.end());
 }

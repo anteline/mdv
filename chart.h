@@ -58,6 +58,7 @@ public:
 
     void AddSeries(QtCharts::QLineSeries *series, std::string name, Fixpoint unit, Fixpoint centre, double min, double max);
     void AddSeries(QtCharts::QLineSeries *series, std::string name, std::string group, Fixpoint unit, double min, double max);
+    void AddPendingSeries(std::string const &name, std::vector<std::unique_ptr<SeriesData>> &series);
 
     void AddCallout(SeriesData &seriesData, QPointF point, bool state);
     void RemoveCallout(Callout &callout);
