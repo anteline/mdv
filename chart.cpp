@@ -362,11 +362,13 @@ std::string SeriesData::GetText(Time time, double value) const
         unit *= 10;
     }
 
-    char fmt[32];
-    snprintf(fmt, sizeof(fmt), "Time=%%.%ds \n%%s=%%.%df ", timeLength, valueLength);
+    char fmt[64];
+    snprintf(fmt, sizeof(fmt), "Date=%%s \nTime=%%.%ds \n%%s=%%.%df ", timeLength, valueLength);
 
-    char buff[mName.length() + 64];
-    snprintf(buff, sizeof(buff), fmt, time.ToString().data() + 11, mName.data(), value);
+    std::array<char, 32> timeStr = time.ToString();
+    timeStr[10] = char(0);
+    char buff[mName.length() + 128];
+    snprintf(buff, sizeof(buff), fmt, timeStr.data(), timeStr.data() + 11, mName.data(), value);
     return std::string(buff);
 }
 
