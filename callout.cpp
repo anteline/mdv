@@ -111,6 +111,14 @@ void Callout::SetAnchor(QPointF point, QtCharts::QLineSeries *series)
 void Callout::UpdateGeometry()
 {
     prepareGeometryChange();
-    setPos(mChart.chart()->mapToPosition(mAnchor, mSeries) + QPoint(10, -50));
+    QPointF pos = mChart.chart()->mapToPosition(mAnchor, mSeries);
+
+    int x = 10, y = -50;
+    if (mChart.chart()->size().width() < pos.x() * 2)
+    {
+        x = -100;
+        y = -70;
+    }
+    setPos(pos + QPoint(x, y));
 }
 
