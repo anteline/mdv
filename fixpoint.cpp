@@ -1,4 +1,5 @@
 #include <fixpoint.hpp>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -10,7 +11,7 @@ std::array<char, 24> Fixpoint::ToString() const noexcept
     char *addr = rtn.data() + int(mValue < 0);
     size_t length = sizeof(rtn) - uint32_t(int32_t(mValue < 0));
 
-    int64_t value = abs(mValue);
+    int64_t value = std::llabs(mValue);
     int64_t integral = value / GetFactor();
     int64_t fractional = value % GetFactor();
     if (fractional == 0)

@@ -27,7 +27,7 @@ public:
 
     // Constructors
     constexpr Fixpoint() noexcept : mValue(0) { }
-    constexpr Fixpoint(std::int64_t value, RepresentationTag) noexcept : mValue(value) { }
+    constexpr Fixpoint(int64_t value, RepresentationTag) noexcept : mValue(value) { }
 
     template <typename T>
     constexpr explicit Fixpoint(T value) noexcept : mValue(Convert(value)) { }
@@ -194,7 +194,7 @@ private:
         return T(mValue / GetFactor()) + T(mValue % GetFactor()) / GetFactor();
     }
 
-    std::int64_t mValue;
+    int64_t mValue;
 
     template <typename Stream>
     friend Stream & operator <<(Stream &stream, Fixpoint f) noexcept

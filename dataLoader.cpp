@@ -32,10 +32,17 @@ static T const * AlignTo(void const *ptr)
     return static_cast<T const *>(pointer.mPtr);
 }
 
-DataLoader::DataLoader(void const *data, size_t length)
-:   mSegments(nullptr),
-    mDisplayRange(0)
+DataLoader::DataLoader(char const *fname)
+:   mFile(fname)
 {
+    if (not(mFile))
+    {
+        std::cout << "Failed to open input data file " << fname << std::endl;
+        return;
+    }
+
+    void const *data = mFile.GetContent();
+    size_t length = mFile.GetLength();
     if (data == nullptr or length <= sizeof(DataHeader))
     {
         std::cout << "Market data viewer requires more than " << sizeof(DataHeader) << " bytes of input data." << std::endl;
@@ -82,12 +89,12 @@ DataLoader::DataLoader(void const *data, size_t length)
     Segment const *segments = reinterpret_cast<Segment const *>(header + 1);
     for (uint32_t i = 0; i < header->mNumSegments; ++i)
     {
-        if (segments[i].second <= segments[i].first)
+        if (segments[i].mClose <= segments[i].mOpen)
         {
             std::cout << "Invalid input data, " << i << "th segment's begin time is later than its end time." << std::endl;
             return;
         }
-        if (i != 0 and segments[i].first < segments[i - 1].second)
+        if (i != 0 and segments[i].mOpen < segments[i - 1].mClose)
         {
             std::cout << "Invalid input data, " << i << "th segment's begin time is earlier than previous one's end time." << std::endl;
             return;
@@ -95,13 +102,8 @@ DataLoader::DataLoader(void const *data, size_t length)
     }
     length -= (sizeof(DataHeader) + header->mNumSegments * sizeof(Segment));
 
-    std::vector<int64_t> indicesRanges = CalcSegments(header->mTimeTick, segments, segments + header->mNumSegments);
-    if (not indicesRanges.empty())
-    {
-        mIndicesRanges = std::move(indicesRanges);
-        mSegments = segments;
-        mTimeTick = header->mTimeTick;
-    }
+    if (not DataLoaderBase::InsertSegments(header->mTimeTick, segments, segments + header->mNumSegments))
+        return;
 
     void const *addr = segments + header->mNumSegments;
     std::vector<Series> series;
@@ -124,7 +126,7 @@ DataLoader::DataLoader(void const *data, size_t length)
         SeriesHeader const *seriesHeader = static_cast<SeriesHeader const *>(addr);
         char const *name = reinterpret_cast<char const *>(seriesHeader + 1);
         char const *group = name + seriesHeader->mNameLength + int(seriesHeader->mGroupLength != 0u);
-        std::pair<Time, Fixpoint> const *data = AlignTo<std::pair<Time, Fixpoint>>(group + seriesHeader->mGroupLength + 1);
+        PointData const *data = AlignTo<PointData>(group + seriesHeader->mGroupLength + 1);
 
         size_t seriesLength = size_t(reinterpret_cast<char const *>(data + seriesHeader->mNumPoints) - static_cast<char const *>(addr));
         if (length < seriesLength)
@@ -135,7 +137,7 @@ DataLoader::DataLoader(void const *data, size_t length)
         addr = data + seriesHeader->mNumPoints;
         length -= seriesLength;
 
-        std::vector<std::pair<int64_t, Fixpoint>> points = LoadPoints(data, data + seriesHeader->mNumPoints);
+        std::vector<Point> points = LoadPoints(name, 1, seriesHeader->mAxisCentre, data, data + seriesHeader->mNumPoints);
         if (not points.empty())
             series.push_back(Series{name, group, seriesHeader->mAxisCentre, std::move(points)});
     }
@@ -150,64 +152,13 @@ DataLoader::DataLoader(void const *data, size_t length)
     mSeries = std::move(series);
 }
 
-Time DataLoader::IndexToTime(double index)
+DataLoader::~DataLoader()
 {
-    if (not(*this))
-        return DistantPast();
-
-    auto it = std::find_if(mIndicesRanges.begin(), mIndicesRanges.end(), [index](int64_t v) { return index < v; });
-    int64_t idx = std::distance(mIndicesRanges.begin(), it) - 1;
-    idx = std::min(int64_t(mIndicesRanges.size() - 2u), std::max(0l, idx));
-    return mSegments[idx].first + Nanoseconds(int64_t((index - mIndicesRanges[idx]) * mTimeTick.TotalNanoseconds()));
 }
 
-std::vector<int64_t> DataLoader::CalcSegments(Interval timeTick, Segment const *begin, Segment const *end)
+void DataLoader::RetrieveSeries(ISeriesRetriever &retriever) const
 {
-    std::vector<int64_t> segments;
-    if (Nanoseconds(0) < timeTick and begin != nullptr and end != nullptr and begin < end)
-    {
-        segments.reserve(size_t(end - begin) + 1u);
-        segments.push_back(0);
-        for (Segment const *it = begin; it < end; ++it)
-        {
-            Interval interval = it->second - it->first;
-            if (interval % timeTick != Interval())
-            {
-                std::cout << "Invalid input data, time range is not multiples of time tick. TimeTick=" << timeTick
-                        << " Begin=" << it->first.ToString().data() << " End=" << it->second.ToString().data() << std::endl;
-                return std::vector<int64_t>();
-            }
-            segments.push_back(segments.back() + interval / timeTick);
-        }
-    }
-    return std::move(segments);
-}
-
-std::vector<std::pair<int64_t, Fixpoint>> DataLoader::LoadPoints(Data const *begin, Data const *end) const
-{
-    std::vector<std::pair<int64_t, Fixpoint>> rtn;
-    rtn.reserve(size_t(end - begin));
-
-    size_t segIdx = 0;
-    for (Data const *it = begin; it < end; ++it)
-    {
-        if (it != begin and it->first <= (it - 1)->first)
-            return std::vector<std::pair<int64_t, Fixpoint>>();
-
-        while (mSegments[segIdx].second < it->first)
-        {
-            if (mIndicesRanges.size() - 2 < ++segIdx)
-                return std::vector<std::pair<int64_t, Fixpoint>>();
-        }
-
-        if (it->first < mSegments[segIdx].first)
-            return std::vector<std::pair<int64_t, Fixpoint>>();
-
-        Interval interval = it->first - mSegments[segIdx].first;
-        if (interval % mTimeTick != Interval())
-            return std::vector<std::pair<int64_t, Fixpoint>>();
-        rtn.push_back(std::make_pair(mIndicesRanges[segIdx] + interval / mTimeTick, it->second));
-    }
-    return std::move(rtn);
+    for (Series const &series : mSeries)
+        retriever.OnSeries(series.mName, series.mGroup, series.mAxisCentre, &series.mData[0], &series.mData[series.mData.size()]);
 }
 
